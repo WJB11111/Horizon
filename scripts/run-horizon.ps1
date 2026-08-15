@@ -2,7 +2,9 @@
 param(
     [ValidateRange(1, 168)]
     [int]$Hours = 24,
-    [switch]$DisableEmail
+    [switch]$DisableEmail,
+    [string]$ObsidianVaultPath = '',
+    [string]$ObsidianFolder = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -10,6 +12,10 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $horizonExe = Join-Path $projectRoot '.venv\Scripts\horizon.exe'
 $logDirectory = Join-Path $projectRoot 'logs'
 $runtimeConfigPath = $null
+$obsidianExportScript = Join-Path $PSScriptRoot 'export-horizon-to-obsidian.ps1'
+if ([string]::IsNullOrWhiteSpace($ObsidianFolder)) {
+    $ObsidianFolder = "Horizon AI $([char]0x65E5)$([char]0x62A5)"
+}
 
 if (-not (Test-Path -LiteralPath $horizonExe)) {
     throw "Horizon environment not found at $horizonExe"
@@ -51,7 +57,15 @@ try {
         Get-Content -LiteralPath $stderrPath | Tee-Object -FilePath $logPath -Append
     }
     Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
-    exit $process.ExitCode
+    if ($process.ExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($ObsidianVaultPath)) {
+        $summaryDate = Get-Date -Format 'yyyy-MM-dd'
+        $summaryPath = Join-Path $projectRoot "data\summaries\horizon-$summaryDate-zh.md"
+        & $obsidianExportScript `
+            -SummaryPath $summaryPath `
+            -VaultPath $ObsidianVaultPath `
+            -FolderName $ObsidianFolder | Tee-Object -FilePath $logPath -Append
+    }
+    $exitCode = $process.ExitCode
 }
 finally {
     if ($null -ne $runtimeConfigPath -and (Test-Path -LiteralPath $runtimeConfigPath)) {
@@ -59,3 +73,5 @@ finally {
     }
     Pop-Location
 }
+
+exit $exitCode
